@@ -1,0 +1,17 @@
+# Generated artifacts (rebuild with compiler.py)
+build/
+parser.out
+parsetab.py
+lextab.py
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

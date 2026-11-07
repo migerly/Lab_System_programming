@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mini-C — графічне AST</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px system-ui;background:#f4f7fc;color:#17233b}header{padding:18px 24px;background:white;border-bottom:1px solid #d6deec}h1{font-size:24px;margin:0 0 8px}p{margin:6px 0}main{display:grid;grid-template-columns:minmax(260px,32%) 1fr;height:calc(100vh - 155px);min-height:420px}pre{margin:0;padding:24px;background:#17233b;color:#edf4ff;overflow:auto;font:14px/1.6 monospace}section{position:relative;min-width:0}nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{padding:6px 12px;border:1px solid #b9c8e0;border-radius:6px;background:white;cursor:pointer}button:hover{background:#e7effc}svg{width:100%;height:100%;touch-action:none;cursor:grab;background:radial-gradient(#dbe3f1 1px,transparent 1px);background-size:20px 20px}.edge{fill:none;stroke:#9eafc8;stroke-width:2}.node rect{stroke:#5579af;stroke-width:1.5}.node text{font:14px system-ui;fill:#17233b;pointer-events:none}.node{cursor:pointer}.node:focus rect{stroke:#e17816;stroke-width:4}#status{font-size:13px;color:#51627b}@media(max-width:700px){main{grid-template-columns:1fr;height:auto}pre{max-height:250px}section{height:65vh}}
+</style>
+<header><h1>Абстрактне синтаксичне дерево C</h1>
+<p>Коліщатко — масштаб · Перетягування тла — переміщення · Натискання вузла — згортання гілки</p>
+<nav><button id="fit">Умістити дерево</button><button id="expand">Розгорнути все</button><button id="plus" aria-label="Збільшити">＋</button><button id="minus" aria-label="Зменшити">−</button><span id="status" aria-live="polite"></span></nav></header>
+<main><pre id="source"></pre><section><svg id="canvas" role="img" aria-label="Графічне дерево AST"><g id="scene"></g></svg></section></main>
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('payload').textContent);
+document.getElementById('source').textContent=data.source;
+const svg=document.getElementById('canvas'),scene=document.getElementById('scene');
+const ns='http://www.w3.org/2000/svg', collapsed=new Set();
+let sequence=0,positions=[],edges=[],scale=1,tx=20,ty=20,drag=null,moved=false;
+function identify(n){n.id=sequence++;n.children.forEach(identify)}identify(data.tree);
+function el(tag,attrs,parent){const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);parent.appendChild(e);return e}
+function transform(){scene.setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);document.getElementById('status').textContent=`${positions.length} / ${sequence} вузлів · ${Math.round(scale*100)}%`}
+function layout(n,depth){const children=collapsed.has(n.id)?[]:n.children;const ys=children.map(c=>{const y=layout(c,depth+1);edges.push({a:n,b:c});return y});n.x=depth*240;n.y=ys.length?(ys[0]+ys[ys.length-1])/2:layout.row++*64;positions.push(n);return n.y}
+function draw(){positions=[];edges=[];layout.row=0;layout(data.tree,0);scene.replaceChildren();
+ for(const {a,b}of edges){const x=a.x+210,y=a.y+20;el('path',{class:'edge',d:`M${x},${y} C${x+15},${y} ${b.x-15},${b.y+20} ${b.x},${b.y+20}`},scene)}
+ for(const n of positions){const label=n.kind+(n.value===null?'':': '+n.value),isClosed=collapsed.has(n.id);const g=el('g',{class:'node',transform:`translate(${n.x},${n.y})`,tabindex:0,role:'button','aria-label':label,...(n.children.length?{'aria-expanded':!isClosed}:{})},scene);el('rect',{width:210,height:40,rx:9,fill:isClosed?'#ffe3b7':n.kind==='number'||n.kind==='name'?'#e2f3e9':'#e1ebfc'},g);const t=el('text',{x:12,y:25},g);t.textContent=(n.children.length?(isClosed?'＋ ':'− '):'')+(label.length>23?label.slice(0,22)+'…':label);el('title',{},g).textContent=label;const toggle=()=>{if(!n.children.length)return;collapsed.has(n.id)?collapsed.delete(n.id):collapsed.add(n.id);draw()};g.addEventListener('click',()=>{if(!moved)toggle()});g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}})}transform()}
+function fit(){const box=scene.getBBox(),w=svg.clientWidth,h=svg.clientHeight;scale=Math.min(1.5,(w-40)/Math.max(box.width,1),(h-40)/Math.max(box.height,1));scale=Math.max(.05,scale);tx=(w-box.width*scale)/2-box.x*scale;ty=(h-box.height*scale)/2-box.y*scale;transform()}
+function zoom(f,x=svg.clientWidth/2,y=svg.clientHeight/2){const next=Math.max(.05,Math.min(4,scale*f)),ratio=next/scale;tx=x-(x-tx)*ratio;ty=y-(y-ty)*ratio;scale=next;transform()}
+svg.addEventListener('wheel',e=>{e.preventDefault();const r=svg.getBoundingClientRect();zoom(e.deltaY<0?1.12:1/1.12,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+svg.addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;moved=false;drag={x:e.clientX,y:e.clientY,tx,ty};svg.setPointerCapture(e.pointerId)});
+svg.addEventListener('pointermove',e=>{if(!drag)return;moved=true;tx=drag.tx+e.clientX-drag.x;ty=drag.ty+e.clientY-drag.y;transform()});
+svg.addEventListener('pointerup',()=>{drag=null;setTimeout(()=>moved=false,0)});svg.addEventListener('pointercancel',()=>drag=null);
+document.getElementById('fit').onclick=fit;document.getElementById('expand').onclick=()=>{collapsed.clear();draw();fit()};document.getElementById('plus').onclick=()=>zoom(1.25);document.getElementById('minus').onclick=()=>zoom(.8);
+window.addEventListener('resize',fit);draw();requestAnimationFrame(fit);
+</script></html>
